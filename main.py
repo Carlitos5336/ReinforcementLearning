@@ -167,6 +167,10 @@ class Policy:
         
         return self.values == other.values
     
+    def __repr__(self):
+        
+        return str(self.values)
+    
 #----------------------------|
 #      OTHER FUNCTIONS       |
 #----------------------------|
@@ -192,12 +196,59 @@ def getProbabilityMatrix(action, state, numberOfStates):
         probabilities[0, transition.getState().getNumber()] = transition.getProbability()
         
     return probabilities
+
+def VPIToPolicy(base_policy, vpi, lambda_):
+    
+    for state in base_policy.values.keys():
+            
+        best_action = None
+        best_reward = -INF
+        
+        for action in base_policy.getAllActions():
+            
+            inmediateReward = getExpectedReward(action, state)
+            probabilityMatrix = getProbabilityMatrix(action, state, len(states))
+            totalReward = (inmediateReward + lambda_ * np.matmul(probabilityMatrix, vpi))[0]
+            
+            if totalReward > best_reward:
+                best_reward = totalReward
+                best_action = action
+        
+        base_policy.getValues()[state] = best_action
+    
+    return base_policy
+
+def QValuesToPolicy(qvalues):
+    
+    policyDict = {}
+    states = set()
+    actions = set()
+    
+    for state, actionDict in qvalues.items():
+        
+        best_action = None
+        best_value = -INF
+        
+        states.add(state)
+        
+        for action, value in actionDict.items():
+            
+            actions.add(action)
+            
+            if value > best_value:
+                best_action = action
+                best_value = value
+                
+        policyDict[state] = best_action
+            
+    return Policy(policyDict, list(states), list(actions))
+            
     
 #----------------------------|
 #       MAIN FUNCTIONS       |
 #----------------------------|      
     
-def qLearning(initial_state, actions, lambda_, delta = 1e-8, epsilon = 0):
+def qLearning(initial_state, actions, lambda_, delta = 1e-8, epsilon = 0, showIteration = False):
     
     state = initial_state
     actions = [Slow, Fast]
@@ -216,7 +267,8 @@ def qLearning(initial_state, actions, lambda_, delta = 1e-8, epsilon = 0):
     while not convergence():
         
         counter += 1
-        print("QLearning iteration", counter, "...")
+        if showIteration:
+            print("QLearning iteration", counter, "...")
         
         max_qvalue = -INF
         best_action = None
@@ -262,7 +314,7 @@ def qLearning(initial_state, actions, lambda_, delta = 1e-8, epsilon = 0):
         
     return curr_qvalues
 
-def valueIteration(states, actions, lambda_, delta = 1e-8):
+def valueIteration(states, actions, lambda_, delta = 1e-8, showIteration = False):
     
     curr_value = np.random.rand(len(states), 1)
     last_value = None
@@ -284,7 +336,8 @@ def valueIteration(states, actions, lambda_, delta = 1e-8):
     while not convergence():
     
         counter += 1
-        print("Value iteration", counter, "...")
+        if showIteration:
+            print("Value iteration", counter, "...")
         
         last_value = curr_value.copy()
     
@@ -305,7 +358,7 @@ def valueIteration(states, actions, lambda_, delta = 1e-8):
     
     return last_value
 
-def policyIteration(initial_policy, lambda_):
+def policyIteration(initial_policy, lambda_, showIteration = False):
     
     curr_policy = initial_policy
     last_policy = None
@@ -314,7 +367,8 @@ def policyIteration(initial_policy, lambda_):
     while last_policy != curr_policy:
     
         counter += 1
-        print("Policy iteration", counter, "...")
+        if showIteration:
+            print("Policy iteration", counter, "...")
         
         last_policy = curr_policy.clone()
         valueFunction = curr_policy.VPI(lambda_)
@@ -337,6 +391,47 @@ def policyIteration(initial_policy, lambda_):
             curr_policy.getValues()[state] = best_action
     
     return last_policy
+
+#-------------------------------|
+#       TESTING FUNCTIONS       |
+#-------------------------------|
+
+def testPolicyIteration(policy, lambdas):
+    
+    for lambda_ in [0.01, 0.1, 0.5, 0.9, 0.99]:
+        
+        print("\nOptimal policy with lambda =", lambda_)
+        print(policyIteration(policy, lambda_))
+        
+def testValueIteration(states, actions, lambda_):
+    
+    print("\nTESTING VALUE ITERATION METHOD\n")
+    best_value = valueIteration(states, actions, lambda_, showIteration = True)
+    print("\nOptimal value function with valueIteration is:")
+    print(best_value)
+    print("The optimal policy given that optimal value function is:")
+    print(VPIToPolicy(policy.clone(), best_value, lambda_))
+    
+    print("\nTESTING POLICY ITERATION METHOD\n")
+    best_policy = policyIteration(policy, lambda_, showIteration=True)
+    print("\nOptimal policy with policyIteration is:")
+    print(best_policy)
+    
+def testQLearning(initial_state, actions, lambda_, epsilon_):
+    
+    print("\nTESTING QLEARNING WITH GREEDY EXPLORATION")
+    best_qvalues = qLearning(initial_state, actions, lambda_)
+    print("\nBest q-values found:")
+    print(best_qvalues)
+    print("The optimal policy given these q-values is:")
+    print(QValuesToPolicy(best_qvalues))
+    
+    print("\nTESTING QLEARNING WITH EPSILON-GREEDY EXPLORATION")
+    best_qvalues = qLearning(initial_state, actions, lambda_, epsilon = epsilon_)
+    print("\nBest q-values found:")
+    print(best_qvalues)
+    print("The optimal policy given these q-values is:")
+    print(QValuesToPolicy(best_qvalues))
 
 #-------------------|
 #       MAIN        |
@@ -363,12 +458,8 @@ Moving.addTransition(Transition(Slow, Moving, 1, +1))
 Moving.addTransition(Transition(Fast, Fallen, 0.2, -1))
 Moving.addTransition(Transition(Fast, Moving, 0.8, +2))
 
-lambda_ = 0.1
-
 policy = Policy({Fallen : Slow, Standing : Slow, Moving : Slow}, states, actions)
 
-print(policyIteration(policy, lambda_).VPI(lambda_))
-print("")
-print(valueIteration(states, actions, lambda_))
-print("")
-print(qLearning(Fallen, actions, lambda_, epsilon = 0.1))
+#testPolicyIteration(policy, [0.01, 0.1, 0.5, 0.9, 0.99])
+#testValueIteration(states, actions, 0.1)
+testQLearning(Fallen, actions, 0.1, 0.1)
